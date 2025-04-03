@@ -22,7 +22,7 @@ function LoginForm() {
       setErrors(validationErrors);
     
       if (!validationErrors.email && !validationErrors.password) {
-        axios.post('http://localhost:8081/login', values)
+        axios.post('https://spendy-react.onrender.com/login', values)
           .then(res => {
             if (res.data.status === "Success") {
               localStorage.setItem("userId", res.data.user.id); // ✅ SET IT HERE ONLY

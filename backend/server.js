@@ -1,124 +1,122 @@
 const express = require("express");
-const path = require("path");
 const cors = require("cors");
-const mysql = require("mysql");
+const { connectToMongo, getDB } = require("./db"); // MongoDB connection
+const { ObjectId } = require("mongodb");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend files
-app.use(express.static(path.join(__dirname, '../dist')));
+let db;
 
-const db = mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "signup"
-});
+connectToMongo().then(() => {
+    db = getDB();
 
-app.post('/signup', (req, res) => {
-    const sql = "INSERT INTO login (`name`, `email`, `password`) VALUES (?)";
-    const values = [
-        req.body.name,
-        req.body.email,
-        req.body.password
-    ];
-    db.query(sql, [values], (err, data) => {
-        if (err) {
-            return res.json("Error");
-        }
-        return res.json(data);
-    });
-});
+  // ✅ Login
+    app.post("/login", async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await db.collection("login").findOne({ email, password });
 
-app.post('/login', (req, res) => {
-    const sql = "SELECT * FROM login WHERE email = ? AND password = ?";
-    db.query(sql, [req.body.email, req.body.password], (err, data) => {
-        if (err) return res.json({ status: "Error", error: err });
-        if (data.length > 0) {
-        // ✅ Send back full user object including `id`
+        if (user) {
         return res.json({
             status: "Success",
             user: {
-            id: data[0].id,       // <-- make sure your table has a column named `id`
-            name: data[0].name,
-            email: data[0].email
-            }
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            },
         });
         } else {
         return res.json({ status: "Failed" });
         }
+    } catch (err) {
+        res.status(500).json({ status: "Error", error: err });
+    }
+    });
+
+    // ✅ Signup Route
+app.post("/signup", async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+
+      // Check if user already exists
+        const existingUser = await db.collection("login").findOne({ email });
+        if (existingUser) {
+        return res.status(409).json({ message: "Email already registered" });
+    }
+
+      // Insert new user
+        await db.collection("login").insertOne({ name, email, password });
+        return res.status(201).json({ message: "Signup successful" });
+    } catch (err) {
+        console.error("Signup error:", err);
+        return res.status(500).json({ message: "Signup failed", error: err });
+    }
+    });  
+
+  // ✅ Get Transactions by User
+    app.get("/transactions/:userId", async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const transactions = await db.collection("transactions").find({ user_id: userId }).toArray();
+        res.json(transactions);
+    } catch (err) {
+        res.status(500).json("Error fetching transactions");
+    }
+    });
+
+  // ✅ Add Transaction
+    app.post("/add-transaction", async (req, res) => {
+    try {
+        const { userId, categoryId, type, amount, description, date } = req.body;
+
+        await db.collection("transactions").insertOne({
+        user_id: userId,
+        category_id: categoryId,
+        type,
+        amount,
+        description,
+        date,
+        });
+
+        res.json({ status: "Success" });
+    } catch (err) {
+        res.status(500).json({ status: "Error", error: err });
+    }
+    });
+
+  // ✅ Update Transaction
+    app.post("/update-transaction/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const updatedData = req.body;
+
+        await db.collection("transactions").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedData }
+        );
+
+        res.json({ status: "Success" });
+    } catch (err) {
+        res.status(500).json({ status: "Error", error: err });
+    }
+    });
+
+  // ✅ Get Categories by Type
+    app.get("/categories/:type", async (req, res) => {
+    try {
+        const type = req.params.type;
+        const categories = await db.collection("categories").find({ type }).toArray();
+        res.json(categories);
+    } catch (err) {
+        res.status(500).json("Database error");
+    }
+    });
+
+  // ✅ Start the server
+    const PORT = process.env.PORT || 8081;
+    app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
     });
 });
-
-
-app.get('/transactions/:userId', (req, res) => {
-    const userId = req.params.userId;
-    const sql = "SELECT t.*, c.name AS category_name FROM transactions t JOIN categories c ON t.category_id = c.id WHERE t.user_id = ?";
-    
-    db.query(sql, [userId], (err, data) => {
-        if (err) {
-        console.error("Fetch error:", err);
-        return res.status(500).json("Error fetching transactions");
-        }
-        return res.json(data);
-    });
-    });
-
-    app.post('/add-transaction', (req, res) => {
-        const { userId, categoryId, type, amount, description, date } = req.body;
-    
-        const sql = `
-            INSERT INTO transactions (user_id, category_id, type, amount, description, date)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `;
-    
-        db.query(sql, [userId, categoryId, type, amount, description, date], (err, result) => {
-            if (err) {
-                console.error("Insert error:", err);
-                return res.status(500).json({ error: "Failed to insert transaction" });
-            }
-            res.json({ message: "Transaction added successfully", id: result.insertId });
-        });
-    });
-
-    app.get('/categories/:type', (req, res) => {
-        const type = req.params.type;
-        const sql = "SELECT * FROM categories WHERE type = ?";
-        db.query(sql, [type], (err, data) => {
-            if (err) return res.status(500).json("Database error");
-            return res.json(data);
-        });
-    });
-
-    app.post('/update-transaction/:id', (req, res) => {
-        const id = req.params.id;
-        const { userId, categoryId, type, amount, description, date } = req.body;
-    
-        const sql = `
-            UPDATE transactions
-            SET user_id = ?, category_id = ?, type = ?, amount = ?, description = ?, date = ?
-            WHERE id = ?
-        `;
-        
-        db.query(sql, [userId, categoryId, type, amount, description, date, id], (err, data) => {
-            if (err) {
-            console.error("Update error:", err);
-            return res.status(500).json("Error updating transaction");
-            }
-            return res.json("Transaction updated");
-        });
-        });
-
-        app.get('*', (req, res) => {
-            res.sendFile(path.join(__dirname, '../dist/index.html'));
-            });
-          
-          app.listen(8081, () => {
-            console.log("Server listening on http://localhost:8081");
-            });
-    
-    app.listen(8081, () => {
-    console.log("listening");
-    });

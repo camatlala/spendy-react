@@ -25,7 +25,7 @@ function SignUpForm() {
     setErrors(validationErrors);
   
     if (!validationErrors.name && !validationErrors.email && !validationErrors.password) {
-      axios.post('http://localhost:8081/signup', values)
+      axios.post('https://spendy-react.onrender.com/signup', values)
         .then(res => {
           console.log("Server response:", res.data);
           navigate('/');
