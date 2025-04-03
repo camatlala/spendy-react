@@ -115,10 +115,13 @@ app.get('/transactions/:userId', (req, res) => {
             res.sendFile(path.join(__dirname, '../dist/index.html'));
             });
           
-          app.listen(8081, () => {
-            console.log("Server listening on http://localhost:8081");
-            });
+          const PORT = process.env.PORT || 8081;
+
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
+
     
-    app.listen(8081, () => {
+    app.listen(PORT, () => {
     console.log("listening");
     });
